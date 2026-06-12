@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LMS Architecture Brief - Hybrid Strangler (Modular First)</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --card: #ffffff;
+      --ink: #1f2937;
+      --muted: #4b5563;
+      --line: #dbe2ea;
+      --accent: #0f62fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.4;
+    }
+    .wrap {
+      max-width: 1080px;
+      margin: 24px auto;
+      padding: 0 16px 28px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #0f62fe 0%, #3d8bff 100%);
+      color: #fff;
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+    .hero p {
+      margin: 0;
+      font-size: 14px;
+      opacity: 0.96;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    .meta div {
+      background: rgba(255,255,255,0.16);
+      padding: 8px;
+      border-radius: 8px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    h3 { margin: 10px 0 6px; font-size: 15px; }
+    ul { margin: 6px 0 8px 18px; padding: 0; }
+    li { margin: 4px 0; color: var(--muted); }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      background: #ecf3ff;
+      color: #1146a6;
+      border: 1px solid #c9dcff;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin-right: 6px;
+    }
+    .small { font-size: 12px; color: var(--muted); }
+    .phase {
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+      margin: 8px 0;
+    }
+    .note {
+      background: #f0f6ff;
+      border: 1px solid #c9dcff;
+      color: #1e3a8a;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+    }
+    .page-break { page-break-before: always; }
+    @media (max-width: 900px) {
+      .two { grid-template-columns: 1fr; }
+      .meta { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
+    @media print {
+      body { background: #fff; }
+      .wrap { max-width: none; margin: 0; }
+      .card, .hero { break-inside: avoid; }
+      .page-break { page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>LMS Architecture Brief (Plan-1)</h1>
+      <p>Hybrid Strangler approach: <b>modular-first in current monolith</b>, then controlled extraction into 10-20 services for the new combined app.</p>
+      <div class="meta">
+        <div><b>Scope</b><br/>LMS backend APIs</div>
+        <div><b>Current Stack</b><br/>JDK 8, Spring Boot 2.7.1, WAR</div>
+        <div><b>Target</b><br/>JDK 17, SB3, cloud-ready</div>
+        <div><b>Audience</b><br/>Technical Architects</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>1) Executive Summary (High Level)</h2>
+      <ul>
+        <li>Current LMS is a large monolith with broad controller and service surface, deep database coupling, and many integration points.</li>
+        <li>Business goal is to expose full LMS capability to a new app via clean APIs while improving scalability, modularity, and maintainability.</li>
+        <li>Recommended path is <b>Hybrid Strangler</b>: first modularize the monolith by domain boundaries, then extract stable modules as independent services.</li>
+        <li>This avoids risky big-bang rewrites and enables continuous delivery with measurable modernization checkpoints.</li>
+      </ul>
+      <div>
+        <span class="tag">Mermaid embedded</span>
+        <span class="tag">2-3 page brief</span>
+        <span class="tag">Architecture-level only</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2) Current Design (AS-IS) Snapshot</h2>
+      <div class="two">
+        <div>
+          <h3>System Characteristics</h3>
+          <ul>
+            <li>Single deployable WAR; broad API base path and mixed business domains in one runtime.</li>
+            <li>Dual database model (Postgres + Oracle) with service-level orchestration of cross-source data.</li>
+            <li>Large service classes and query builders indicate migration from procedure-centric logic.</li>
+            <li>Multiple external integrations are executed in request path for key workflows.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Primary Risks</h3>
+          <ul>
+            <li>Change blast radius is high because all modules release together.</li>
+            <li>Performance and resilience depend on synchronized downstream behavior.</li>
+            <li>Domain overlap creates duplicate endpoints and similar logic in multiple places.</li>
+            <li>Technology baseline (JDK 8 / SB2) limits long-term platform evolution.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="small">AS-IS context diagram</div>
+      <div class="mermaid">
+flowchart LR
+    U[Users / New App / Partners] --> G[/BalicLmsUtil APIs/]
+    G --> C1[Controllers\nLead/IB/Agency/Other/Admin/Inhouse]
+    C1 --> S1[Service Layer\nlarge mixed-domain services]
+    S1 --> R[Repositories]
+    R --> P[(Postgres)]
+    R --> O[(Oracle)]
+    S1 --> X[External Systems\nCRM, SmartPitch, Customer360, Telephony, FCM]
+      </div>
+    </section>
+
+    <div class="page-break"></div>
+
+    <section class="card">
+      <h2>3) Plan-1 Target: Hybrid Strangler (Modular-First then Extract)</h2>
+      <p class="small">Recommended modernization pattern</p>
+      <div class="mermaid">
+flowchart TB
+    A[Current LMS Monolith] --> B[Step 1: Modularize by Domain\n(inside same codebase)]
+    B --> C[Step 2: Stabilize APIs + Contracts\n(versioning + canonical DTOs)]
+    C --> D[Step 3: Extract Services Iteratively\nvia API Gateway routing]
+    D --> E[Target: 10-20 Services\nindependent deploy/scale]
+      </div>
+
+      <h3>Why this plan</h3>
+      <ul>
+        <li>Preserves business continuity while reducing technical risk.</li>
+        <li>Creates clear boundaries before extraction (prevents distributed monolith).</li>
+        <li>Supports progressive rollout and rollback per domain.</li>
+        <li>Enables parallel delivery for product and platform teams.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>4) Modular-First Domain Model (Inside Current Monolith)</h2>
+      <div class="two">
+        <div>
+          <h3>Suggested domain modules</h3>
+          <ul>
+            <li>Lead Core (create/update/view/disposition)</li>
+            <li>IB Channel</li>
+            <li>Agency & SAM</li>
+            <li>Inhouse & Partner Intake</li>
+            <li>Renewal & Retention</li>
+            <li>Medical & Recruitment</li>
+            <li>Reports & DSR/PSF</li>
+            <li>Master Data</li>
+            <li>Identity / Access / Audit</li>
+            <li>External Integration Gateway</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Immediate structure outcomes</h3>
+          <ul>
+            <li>Controllers/services/repositories grouped by domain package.</li>
+            <li>Shared contracts minimized; anti-corruption interfaces introduced.</li>
+            <li>Domain-level test suites and API contracts created.</li>
+            <li>Operational metrics reported per domain slice.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5) High-Level Extraction Sequence (Service Waves)</h2>
+      <div class="phase"><b>Wave 1 (Low risk):</b> Master Data, Integration Gateway, Notification, File/Asset.</div>
+      <div class="phase"><b>Wave 2:</b> IAM/Audit and Bulk Upload processing.</div>
+      <div class="phase"><b>Wave 3 (Core):</b> Lead Core service (system of record).</div>
+      <div class="phase"><b>Wave 4:</b> Channel intake services (IB, Agency, Inhouse).</div>
+      <div class="phase"><b>Wave 5:</b> Renewal/Retention, Medical/Recruitment, Reporting slices.</div>
+
+      <div class="note">
+        Principle: extract domains with clear ownership first, then high-coupling workflows after contracts and events are stable.
+      </div>
+
+      <div class="small" style="margin-top:8px;">Strangler routing view</div>
+      <div class="mermaid">
+flowchart LR
+    N[New Combined App] --> GW[API Gateway]
+    GW -->|migrated routes| SVC[New Services]
+    GW -->|remaining routes| LEG[Legacy LMS]
+    LEG --> DB[(Existing DBs)]
+    SVC --> NDB[(Service-owned stores)]
+      </div>
+    </section>
+
+    <div class="page-break"></div>
+
+    <section class="card">
+      <h2>6) Target Architecture Options (Short Comparison)</h2>
+      <div class="two">
+        <div>
+          <h3>Option A: Modular Monolith (target)</h3>
+          <ul>
+            <li>Fastest stabilization, lower operations overhead.</li>
+            <li>Good for strong domain governance and medium scale.</li>
+            <li>Limitation: independent scaling/deploy still constrained.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Option B: Full Microservices (target)</h3>
+          <ul>
+            <li>Best independent scaling and release autonomy.</li>
+            <li>Highest operational complexity and migration risk.</li>
+            <li>Requires mature platform, contracts, and observability.</li>
+          </ul>
+        </div>
+      </div>
+      <h3>Recommended: staged hybrid</h3>
+      <ul>
+        <li>Start as modular monolith internally, then extract high-value modules incrementally.</li>
+        <li>Achieves microservice benefits without big-bang disruption.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>7) Technology Direction (High Level)</h2>
+      <ul>
+        <li>Platform baseline: JDK 17 + Spring Boot 3.x compatibility path.</li>
+        <li>Edge and control plane: API Gateway, centralized authN/authZ, request tracing.</li>
+        <li>Resilience: retries/circuit breakers/timeouts per integration profile.</li>
+        <li>Observability: logs, metrics, traces as mandatory non-functional baseline.</li>
+        <li>Data strategy: domain ownership, read models for legacy Oracle dependencies.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>8) Expected Outcomes</h2>
+      <ul>
+        <li>Clean API exposure to new app with lower coupling and clearer contracts.</li>
+        <li>Independent scaling for high-load modules and partner-facing integrations.</li>
+        <li>Reduced regression risk through domain boundaries and phased extraction.</li>
+        <li>Faster developer onboarding and easier maintenance with modular ownership.</li>
+        <li>Progressive path from legacy runtime to modern platform standards.</li>
+      </ul>
+    </section>
+
+  </div>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+  </script>
+</body>
+</html>
+
